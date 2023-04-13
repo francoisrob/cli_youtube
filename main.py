@@ -20,6 +20,7 @@ color_pairs = {
     "header2": (curses.COLOR_BLACK, curses.COLOR_BLUE),
     "header3": (curses.COLOR_BLACK, curses.COLOR_CYAN),
     "header4": (curses.COLOR_BLACK, curses.COLOR_MAGENTA),
+    "header5": (curses.COLOR_WHITE, curses.COLOR_BLUE),
 }
 
 styles = {
@@ -30,7 +31,8 @@ styles = {
 
 
 class MenuOption:
-    def __init__(self, title, id, function):
+    def __init__(self, record, title, id, function):
+        self.record = record
         self.title = title
         self.id = id
         self.function = function
@@ -53,25 +55,30 @@ class Menu:
         self.title = title
         self.options = options
 
+    def display_header(self, stdscr):
+        stdscr.addstr(0, 0, self.title, curses.A_BOLD)
+        stdscr.
+        stdscr.addstr(1, 0, '_' * len(self.title))
+        stdscr.addstr(2, 1, 'ID')
+        stdscr.addstr(2, 5, 'Title')
+        stdscr.addstr(2, 61, 'Channel')
+
+    def display_options(self, stdscr, line, option):
+        stdscr.addstr(line, 0, str(option.id))
+        stdscr.addstr(line, 5, option.title)
+        stdscr.addstr(line, 56, '     ')
+        stdscr.addstr(line, 61, str((option.record['playlists'])[0]['name']))
+
     def display(self, stdscr):
         current_option = 0
         key_actions = {
             curses.KEY_UP: lambda: current_option > 0 and current_option - 1,
             curses.KEY_DOWN: lambda: current_option < num_options - 1 and current_option + 1,
             ord('q'): lambda: True,
-            # curses.KEY_ENTER: lambda: self.options[current_option].execute(),
-            # 10: lambda: self.options[current_option].execute(),
-            # 13: lambda: self.options[current_option].execute()
-            # TODO: Fix this
             curses.KEY_ENTER: lambda: ytc.play_video(self.options[current_option].id),
             10: lambda: ytc.play_video(self.options[current_option].id),
             13: lambda: ytc.play_video(self.options[current_option].id)
         }
-        heading = [
-            (f'{self.title}', curses.color_pair(3)),
-            ('Use arrow keys to navigate\tq to quit'.expandtabs(
-                5), curses.color_pair(4)),
-        ]
 
         curses.curs_set(0)
         for i, (x, (fg, bg)) in enumerate(color_pairs.items()):
@@ -84,9 +91,8 @@ class Menu:
             stdscr.clear()
             line = 0
             try:
-                for text, style in heading:
-                    stdscr.addstr(line, 0, text, style)
-                    line += 1
+                self.display_header(stdscr)
+                line += 3
             except curses.error:
                 pass
 
@@ -96,7 +102,7 @@ class Menu:
                 else:
                     stdscr.attron(curses.color_pair(1))
                 try:
-                    stdscr.addstr(line, 0, option.title)
+                    self.display_options(stdscr, line, option)
                 except curses.error:
                     pass
                 line += 1
@@ -154,8 +160,9 @@ class Ytcc:
         for x in self.json_data:
             title = x['title']
             video_id = x['id']
+            record = x
             def sfunction(): return self.play_video(id)
-            option = MenuOption(title, video_id, sfunction)
+            option = MenuOption(record, title, video_id, sfunction)
             data.append(option)
         return data
 
@@ -164,5 +171,5 @@ if __name__ == '__main__':
     ytc = Ytcc()
     ytc.generate_date()
     # ytc.update_subscriptions()
-    curses.wrapper(Menu('\tYoutube in MPV', ytc.get_videos()).display)
+    curses.wrapper(Menu('Youtube in MPV', ytc.get_videos()).display)
     # print(ytc.get_videos())
