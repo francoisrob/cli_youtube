@@ -11,6 +11,7 @@ import curses
 import json
 import subprocess
 import datetime
+import textwrap
 
 
 color_pairs = {
@@ -54,23 +55,39 @@ class Menu:
     def __init__(self, title, options):
         self.title = title
         self.options = options
+        self.line = 0
 
     def display_header(self, stdscr):
-        stdscr.addstr(0, 0, self.title, curses.A_BOLD)
-        stdscr.
-        stdscr.addstr(1, 0, '_' * len(self.title))
-        stdscr.addstr(2, 1, 'ID')
-        stdscr.addstr(2, 5, 'Title')
-        stdscr.addstr(2, 61, 'Channel')
+        stdscr.addstr(0, 0, self.title.center(200), curses.color_pair(3))
+        stdscr.addstr(1, 0, '_' * 200, curses.color_pair(3))
+        stdscr.addstr(2, 0, 'ID')
+        stdscr.addstr(2, 4, '|Title')
+        stdscr.addstr(2, 84, '|Description')
+        stdscr.addstr(2, 189, '|Date')
 
     def display_options(self, stdscr, line, option):
+        for i in range(0, 2):
+            stdscr.addstr(line+i, 0, ' ' * 200)
+        stdscr.addstr(line+2, 0, '_'*200)
         stdscr.addstr(line, 0, str(option.id))
-        stdscr.addstr(line, 5, option.title)
+        stdscr.addstr(line, 5, option.title[0:50])
+
         stdscr.addstr(line, 56, '     ')
-        stdscr.addstr(line, 61, str((option.record['playlists'])[0]['name']))
+        stdscr.addstr(
+            (line+1), 5, f" - {str((option.record['playlists'])[0]['name'])}")
+        stdscr.addstr(line, 190, str(option.record['publish_date']))
+        stdscr.addstr(line, 80, '     ')
+        description = str(option.record['description'])[0:170]
+        lines = textwrap.wrap(description, width=90)
+        # Only repeat for loop 2 times
+        for i, l in enumerate(lines):
+            stdscr.addstr((line+i), 85, l)
+
+        # stdscr.addstr(line, 85, str(
+        #     option.record['description'])[0:50])
 
     def display(self, stdscr):
-        current_option = 0
+        current_option = 1
         key_actions = {
             curses.KEY_UP: lambda: current_option > 0 and current_option - 1,
             curses.KEY_DOWN: lambda: current_option < num_options - 1 and current_option + 1,
@@ -105,7 +122,7 @@ class Menu:
                     self.display_options(stdscr, line, option)
                 except curses.error:
                     pass
-                line += 1
+                line += 3
             stdscr.refresh()
 
             try:
