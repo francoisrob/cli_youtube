@@ -6,151 +6,181 @@
 #TODO: Play the videos
 #TODO: Probably use a database to store the videos
 #TODO: GUI Tweaks. I've thought about giving up since theres a pip module that makes things easier:https://github.com/pmbarrett314/curses-menu
+
+
+Neat code:
+def my_print(*args, **kwargs):
+    prefix = kwargs.pop('prefix', '')
+    print(prefix, *args, **kwargs)
+>>> my_print('eggs')
+ eggs
+>>> my_print('eggs', prefix='spam')
+spam eggs
+
 """
 import curses
+import threading
 import json
 import subprocess
 import datetime
 import textwrap
+import types
+import os
 
 
-color_pairs = {
-    "default": (curses.COLOR_WHITE, curses.COLOR_BLACK),
-    "highlighted": (curses.COLOR_BLACK, curses.COLOR_WHITE),
-    "header1": (curses.COLOR_BLACK, curses.COLOR_GREEN),
-    "header2": (curses.COLOR_BLACK, curses.COLOR_BLUE),
-    "header3": (curses.COLOR_BLACK, curses.COLOR_CYAN),
-    "header4": (curses.COLOR_BLACK, curses.COLOR_MAGENTA),
-    "header5": (curses.COLOR_WHITE, curses.COLOR_BLUE),
-}
-
-styles = {
-    'BRIGHT': curses.A_BOLD,
-    'DIM': curses.A_DIM,
-    'NORMAL': curses.A_NORMAL
-}
+videos = None
+daterange = None
+refreshrate = 50
 
 
-class MenuOption:
-    def __init__(self, record, title, id, function):
-        self.record = record
-        self.title = title
-        self.id = id
-        self.function = function
-
-    def execute(self):
-        self.function(self.id)
+def get_videos(data):
+    global videos
+    videos = json.loads(
+        data, object_hook=lambda d: types.SimpleNamespace(**d))
 
 
-# DEMO Option: Plays a game
-class PlayGameOption(MenuOption):
-    def __init__(self):
-        super().__init__("Play", self.play_game)
+def set_date(**days):
+    global daterange
+    format = "%Y-%m-%d"
+    range = datetime.datetime.today() - datetime.timedelta(days=days.get('days', 3))
+    daterange = range.strftime(format)
 
-    def play_game(self):
-        print("Playing game...")
+# class YoutubeClient:
+#     def __init__(self):
+#         # self.subscriptions = []
+#         self.latest_videos = []
 
+#     def get_subscriptions(self, data):
+#         self.latest_videos = json.loads(
+#             data, object_hook=lambda d: types.SimpleNamespace(**d))
+#         return self.latest_videos
+
+#     def view_subscriptions(self):
+#         return self.latest_videos
+
+
+# class MenuOption:
+#     def __init__(self, record, title, id, function):
+#         self.record = record
+#         self.title = title
+#         self.id = id
+#         self.function = function
+
+#     def execute(self):
+#         self.function(self.id)
 
 class Menu:
-    def __init__(self, title, options):
+    def __init__(self, title, videos):
         self.title = title
-        self.options = options
-        self.line = 0
+        self.videos = videos
+        self.selected = 0
+        self.pos = 0
 
-    def display_header(self, stdscr):
-        stdscr.addstr(0, 0, self.title.center(200), curses.color_pair(3))
-        stdscr.addstr(1, 0, '_' * 200, curses.color_pair(3))
-        stdscr.addstr(2, 0, 'ID')
-        stdscr.addstr(2, 4, '|Title')
-        stdscr.addstr(2, 84, '|Description')
-        stdscr.addstr(2, 189, '|Date')
+    def get_dimensions(self, stdscr):
+        y, x = stdscr.getmaxyx()
+        return y, x
 
-    def display_options(self, stdscr, line, option):
-        for i in range(0, 2):
-            stdscr.addstr(line+i, 0, ' ' * 200)
-        stdscr.addstr(line+2, 0, '_'*200)
-        stdscr.addstr(line, 0, str(option.id))
-        stdscr.addstr(line, 5, option.title[0:50])
+    def set_colors(self, stdscr):
+        curses.use_default_colors()
+        for x, y in enumerate([curses.COLOR_RED,
+                               curses.COLOR_GREEN,
+                               curses.COLOR_YELLOW,
+                               curses.COLOR_BLUE,
+                               curses.COLOR_MAGENTA,
+                               curses.COLOR_CYAN]):
+            curses.init_pair(x, y, -1)
 
-        stdscr.addstr(line, 56, '     ')
-        stdscr.addstr(
-            (line+1), 5, f" - {str((option.record['playlists'])[0]['name'])}")
-        stdscr.addstr(line, 190, str(option.record['publish_date']))
-        stdscr.addstr(line, 80, '     ')
-        description = str(option.record['description'])[0:170]
-        lines = textwrap.wrap(description, width=90)
-        # Only repeat for loop 2 times
-        for i, l in enumerate(lines):
-            stdscr.addstr((line+i), 85, l)
+    def set_position(self, stdscr, y, x, *args, **kwargs):
+        pass
 
-        # stdscr.addstr(line, 85, str(
-        #     option.record['description'])[0:50])
+    def list_options(self):
+        for x in self.videos:
+            print(x.title)
 
-    def display(self, stdscr):
-        current_option = 1
-        key_actions = {
-            curses.KEY_UP: lambda: current_option > 0 and current_option - 1,
-            curses.KEY_DOWN: lambda: current_option < num_options - 1 and current_option + 1,
-            ord('q'): lambda: True,
-            curses.KEY_ENTER: lambda: ytc.play_video(self.options[current_option].id),
-            10: lambda: ytc.play_video(self.options[current_option].id),
-            13: lambda: ytc.play_video(self.options[current_option].id)
-        }
-
+    def window(self, stdscr):
+        global refreshrate
         curses.curs_set(0)
-        for i, (x, (fg, bg)) in enumerate(color_pairs.items()):
-            curses.init_pair(i+1, fg, bg)
-        for x, y in styles.items():
-            setattr(curses, x, y)
+        stdscr.timeout(refreshrate)
+        self.set_colors(stdscr)
 
-        num_options = len(self.options)
         while True:
+            y, x = self.get_dimensions(stdscr)
             stdscr.clear()
-            line = 0
-            try:
-                self.display_header(stdscr)
-                line += 3
-            except curses.error:
-                pass
-
-            for i, option in enumerate(self.options):
-                if i == current_option:
-                    stdscr.attron(curses.color_pair(2))
-                else:
-                    stdscr.attron(curses.color_pair(1))
-                try:
-                    self.display_options(stdscr, line, option)
-                except curses.error:
-                    pass
-                line += 3
+            stdscr.box()
+            subwindow = self.create_subwindow(stdscr, y, x)
+            thread = threading.Thread(self.display_videos(subwindow))
+            thread.start()
+            # self.create_subpad(stdscr, y, x)
+            self.header(stdscr, x)
+            self.footer(stdscr, y)
+            thread.join()
             stdscr.refresh()
-
             try:
-                key = stdscr.getch()
+                c = stdscr.getch()
+                if c == ord('q'):
+                    break
             except KeyboardInterrupt:
                 break
-
-            action = key_actions.get(key)
-            if action:
-                result = action()
-                if result is True:
-                    break
-                elif result is not None:
-                    current_option = result
-
         curses.endwin()
+
+    def create_subwindow(self, stdscr, y, x):
+        try:
+            subwin = stdscr.subwin(y-4, x-2, 2, 1)
+            subwin.border(' ', ' ', 0, 0, ' ', ' ', ' ', ' ')
+            subwin.refresh()
+            return subwin
+        except curses.error:
+            pass
+
+    def create_subpad(self, stdscr, y, x):
+        try:
+            subpad = stdscr.subpad(y-4, x-2, 2, 1)
+            subpad.border(' ', ' ', 0, 0, ' ', ' ', ' ', ' ')
+            subpad.refresh()
+            return subpad
+        except curses.error:
+            pass
+
+    def header(self, stdscr, x):
+        stdscr.addstr(1, x//2-len(self.title)//2,
+                      self.title, curses.color_pair(1))
+
+    def footer(self, stdscr, y):
+        text = "Press 'q' or Ctrl+C to exit"
+        try:
+            stdscr.addstr(y-2, 3, text)
+        except curses.error:
+            pass
+
+    def display_videos(self, subwin):
+        y, x = subwin.getmaxyx()
+        global videos
+        pos = self.pos
+        for i, video in enumerate(videos):
+            if i < y-2:
+                try:
+                    if self.selected == i:
+                        ypos = i+1
+                        subwin.addstr(
+                            ypos, 1, f"{pos+i+1}. {video.title}", curses.color_pair(2) | curses.A_BOLD)
+                        pos += 1
+                        subwin.addstr(ypos+1, 1, f"{video.playlists[0]}")
+                        pos += 1
+                    else:
+                        subwin.addstr(
+                            i+1+pos, 1, f"{pos+i+1}. {video.title}", curses.color_pair(2))
+                except curses.error:
+                    pass
+        subwin.refresh()
+
+    def add_record(self, record):
+        pass
 
 
 class Ytcc:
     def __init__(self):
-        self.subscriptions = []
         self.json_data = None
         self.date = ''
-
-    def generate_date(self):
-        date_format = "%Y-%m-%d"
-        three_days_ago = datetime.datetime.today() - datetime.timedelta(days=3)
-        self.date = three_days_ago.strftime(date_format)
 
     def get_date(self):
         return self.date
@@ -162,31 +192,73 @@ class Ytcc:
         pass
 
     def play_video(self, video_id):
-        subprocess.run(['ytcc', 'play', str(video_id)],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        url = ''
+        subprocess.run(['mpv',
+                        '--hwdec=auto',
+                        '--no-audio-display',
+                        '--no-osc',
+                        # '--no-input-default-bindings',
+                        # '--no-input-cursor',
+                        # '--no-keepaspect',
+                        '--no-border',
+                        # '--no-keep-open',
+                        # '--no-keep-open-pause',
+                        # '--no-cache',
+                        '--ytdl-format=bestvideo[height<=1080]+bestaudio/best[height<=1080]',
+                        '--no-terminal',
+                        '--no-msg-color',
+                        # '--vo=gpu',
+                        # '--vo=x11',
+                        '--really-quiet',
+                        '--start=1',
+                        url],
+                       stdout=subprocess.DEVNULL,
+                       stderr=subprocess.STDOUT
+                       )
+        print(url)
 
     def update_subscriptions(self):
         subprocess.run(['ytcc', 'update'])
 
     def get_videos(self):
-        command = subprocess.Popen(['ytcc', '--output', 'json', 'list', '-s', self.date, '--watched', '--unwatched',
-                                    '-o', 'publish_date', 'desc'], stdout=subprocess.PIPE)
-        json_data = command.stdout.read()
-        self.json_data = json.loads(json_data)
-        data = []
-        for x in self.json_data:
-            title = x['title']
-            video_id = x['id']
-            record = x
-            def sfunction(): return self.play_video(id)
-            option = MenuOption(record, title, video_id, sfunction)
-            data.append(option)
+        global daterange
+        command = subprocess.Popen(['ytcc',
+                                    '--output',
+                                   'json',
+                                    'list',
+                                    '-s',
+                                    daterange,
+                                    '--watched',
+                                    '--unwatched',
+                                    '-o',
+                                    'publish_date',
+                                    'desc'],
+                                   stdout=subprocess.PIPE)
+        data = command.stdout.read()
         return data
+
+    def handle_input(self, stdscr):
+        selected = self.selected
+        key_actions = {
+            curses.KEY_UP: lambda: self.move_up(selected, num_options),
+            curses.KEY_DOWN: lambda: self.move_down(selected, num_options),
+            ord('q'): lambda: True}
+        # curses.KEY_ENTER: lambda: ytc.play_video(self.options[selected].id),
+        # 10: lambda: ytc.play_video(self.options[selected].id),
+        # 13: lambda: ytc.play_video(self.options[selected].id)
+        # }
+        pass
 
 
 if __name__ == '__main__':
+    # os.system('clear')
     ytc = Ytcc()
-    ytc.generate_date()
+    # ytc.generate_date()
+    set_date(days=6)
     # ytc.update_subscriptions()
-    curses.wrapper(Menu('Youtube in MPV', ytc.get_videos()).display)
-    # print(ytc.get_videos())
+    get_videos(ytc.get_videos())
+    curses.wrapper(Menu('Youtube in MPV', videos).window)
+    # curses.wrapper(Menu('Youtube in MPV', ytc.get_videos()).display)
+#
+#
+#
