@@ -1,22 +1,5 @@
 """
     Youtube player using mpv
-
-#TODO: Import user subscriptions from csv file
-#TODO: Generate the latest videos from the subscriptions and display them in a menu. Demo classes have been made but probs need modifying
-#TODO: Play the videos
-#TODO: Probably use a database to store the videos
-#TODO: GUI Tweaks. I've thought about giving up since theres a pip module that makes things easier:https://github.com/pmbarrett314/curses-menu
-
-
-Neat code:
-def my_print(*args, **kwargs):
-    prefix = kwargs.pop('prefix', '')
-    print(prefix, *args, **kwargs)
->>> my_print('eggs')
- eggs
->>> my_print('eggs', prefix='spam')
-spam eggs
-
 """
 import curses
 import threading
@@ -30,7 +13,7 @@ import os
 
 videos = None
 daterange = None
-refreshrate = 50
+refreshrate = 200
 
 
 def get_videos(data):
@@ -45,36 +28,14 @@ def set_date(**days):
     range = datetime.datetime.today() - datetime.timedelta(days=days.get('days', 3))
     daterange = range.strftime(format)
 
-# class YoutubeClient:
-#     def __init__(self):
-#         # self.subscriptions = []
-#         self.latest_videos = []
-
-#     def get_subscriptions(self, data):
-#         self.latest_videos = json.loads(
-#             data, object_hook=lambda d: types.SimpleNamespace(**d))
-#         return self.latest_videos
-
-#     def view_subscriptions(self):
-#         return self.latest_videos
-
-
-# class MenuOption:
-#     def __init__(self, record, title, id, function):
-#         self.record = record
-#         self.title = title
-#         self.id = id
-#         self.function = function
-
-#     def execute(self):
-#         self.function(self.id)
 
 class Menu:
     def __init__(self, title, videos):
         self.title = title
-        self.videos = videos
+        self.videos = []
         self.selected = 0
         self.pos = 0
+        self.count = 0
 
     def get_dimensions(self, stdscr):
         y, x = stdscr.getmaxyx()
@@ -107,17 +68,19 @@ class Menu:
             y, x = self.get_dimensions(stdscr)
             stdscr.clear()
             stdscr.box()
-            subwindow = self.create_subwindow(stdscr, y, x)
+            subwindow = self.create_subwindow(stdscr, y-5, x)
             thread = threading.Thread(self.display_videos(subwindow))
             thread.start()
-            # self.create_subpad(stdscr, y, x)
-            self.header(stdscr, x)
-            self.footer(stdscr, y)
+            try:
+                self.header(stdscr, x)
+                self.footer(stdscr, y)
+            except curses.error:
+                pass
             thread.join()
             stdscr.refresh()
             try:
                 c = stdscr.getch()
-                if c == ord('q'):
+                if self.handle_input(c) == True:
                     break
             except KeyboardInterrupt:
                 break
@@ -125,7 +88,7 @@ class Menu:
 
     def create_subwindow(self, stdscr, y, x):
         try:
-            subwin = stdscr.subwin(y-4, x-2, 2, 1)
+            subwin = stdscr.subwin(y-1, x-2, 4, 1)
             subwin.border(' ', ' ', 0, 0, ' ', ' ', ' ', ' ')
             subwin.refresh()
             return subwin
@@ -144,6 +107,8 @@ class Menu:
     def header(self, stdscr, x):
         stdscr.addstr(1, x//2-len(self.title)//2,
                       self.title, curses.color_pair(1))
+        guide_text = "Use Up and Down arrow keys to navigate, Enter to select"
+        stdscr.addstr(3, 3, guide_text, curses.color_pair(4))
 
     def footer(self, stdscr, y):
         text = "Press 'q' or Ctrl+C to exit"
@@ -156,25 +121,76 @@ class Menu:
         y, x = subwin.getmaxyx()
         global videos
         pos = self.pos
+        count = 0
         for i, video in enumerate(videos):
-            if i < y-2:
+            if i < y-3:
                 try:
                     if self.selected == i:
                         ypos = i+1
+                        subwin.addstr(ypos, 1, str(pos+i+1),
+                                      curses.color_pair(1))
+                        subwin.addstr(ypos, 5, video.title,
+                                      curses.color_pair(2) | curses.A_BOLD)
+                        pos += 1
+                        subwin.addstr(ypos+1, 5, f"Channel:")
                         subwin.addstr(
-                            ypos, 1, f"{pos+i+1}. {video.title}", curses.color_pair(2) | curses.A_BOLD)
-                        pos += 1
-                        subwin.addstr(ypos+1, 1, f"{video.playlists[0]}")
-                        pos += 1
+                            ypos+1, 13, video.playlists[0].name, curses.color_pair(3) | curses.A_BOLD)
+                        # pos += 1
                     else:
                         subwin.addstr(
                             i+1+pos, 1, f"{pos+i+1}. {video.title}", curses.color_pair(2))
+                    self.videos.append(video.url)
+                    count += 1
                 except curses.error:
                     pass
+        self.count = count
         subwin.refresh()
 
-    def add_record(self, record):
-        pass
+    def handle_input(self, key):
+        selected = self.selected
+        if key == ord('q'):
+            return True
+        elif key == curses.KEY_UP:
+            if selected > 0:
+                self.selected -= 1
+                return False
+        elif key == curses.KEY_DOWN:
+            if selected <= self.count-1:
+                self.selected += 1
+                return False
+            elif selected > self.count:
+                self.selected = self.count+1
+                return False
+        elif key == curses.KEY_ENTER or key == 10 or key == 13:
+            play_video(self.videos[self.selected])
+        else:
+            return False
+
+
+def play_video(url):
+    subprocess.run(['mpv',
+                    '--hwdec=auto',
+                    # '--no-audio-display',
+                    # '--no-osc',
+                    # '--no-input-default-bindings',
+                    # '--no-input-cursor',
+                    # '--no-keepaspect',
+                    # '--no-border',
+                    # '--no-keep-open',
+                    # '--no-keep-open-pause',
+                    # '--no-cache',
+                    '--ytdl-format=bestvideo[height<=1080]+bestaudio/best[height<=1080]',
+                    '--no-terminal',
+                    '--no-msg-color',
+                    # '--vo=gpu',
+                    # '--vo=x11',
+                    '--really-quiet',
+                    '--start=1',
+                    url],
+                   stdout=subprocess.DEVNULL,
+                   stderr=subprocess.STDOUT
+                   )
+    # print(url)
 
 
 class Ytcc:
@@ -190,32 +206,6 @@ class Ytcc:
 
     def import_subscriptions(self):
         pass
-
-    def play_video(self, video_id):
-        url = ''
-        subprocess.run(['mpv',
-                        '--hwdec=auto',
-                        '--no-audio-display',
-                        '--no-osc',
-                        # '--no-input-default-bindings',
-                        # '--no-input-cursor',
-                        # '--no-keepaspect',
-                        '--no-border',
-                        # '--no-keep-open',
-                        # '--no-keep-open-pause',
-                        # '--no-cache',
-                        '--ytdl-format=bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-                        '--no-terminal',
-                        '--no-msg-color',
-                        # '--vo=gpu',
-                        # '--vo=x11',
-                        '--really-quiet',
-                        '--start=1',
-                        url],
-                       stdout=subprocess.DEVNULL,
-                       stderr=subprocess.STDOUT
-                       )
-        print(url)
 
     def update_subscriptions(self):
         subprocess.run(['ytcc', 'update'])
@@ -237,28 +227,10 @@ class Ytcc:
         data = command.stdout.read()
         return data
 
-    def handle_input(self, stdscr):
-        selected = self.selected
-        key_actions = {
-            curses.KEY_UP: lambda: self.move_up(selected, num_options),
-            curses.KEY_DOWN: lambda: self.move_down(selected, num_options),
-            ord('q'): lambda: True}
-        # curses.KEY_ENTER: lambda: ytc.play_video(self.options[selected].id),
-        # 10: lambda: ytc.play_video(self.options[selected].id),
-        # 13: lambda: ytc.play_video(self.options[selected].id)
-        # }
-        pass
-
 
 if __name__ == '__main__':
-    # os.system('clear')
+    os.system('clear')
     ytc = Ytcc()
-    # ytc.generate_date()
     set_date(days=6)
-    # ytc.update_subscriptions()
     get_videos(ytc.get_videos())
     curses.wrapper(Menu('Youtube in MPV', videos).window)
-    # curses.wrapper(Menu('Youtube in MPV', ytc.get_videos()).display)
-#
-#
-#
