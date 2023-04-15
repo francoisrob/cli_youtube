@@ -148,6 +148,7 @@ class Menu:
 
     def handle_input(self, key):
         selected = self.selected
+        # DIRT: Fix this
         if selected > self.count-1:
             self.selected = self.count-1
         if key == ord('q'):
