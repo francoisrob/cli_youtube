@@ -48,7 +48,6 @@ class Menu:
 
     def set_colors(self, stdscr):
         curses.use_default_colors()
-        # 0:black, 1:red, 2:green, 3:yellow, 4:blue, 5:magenta, 6:cyan, and 7:white
         for x, y in enumerate([curses.COLOR_BLACK,
                                curses.COLOR_RED,
                                curses.COLOR_GREEN,
@@ -73,14 +72,6 @@ class Menu:
             y, x = self.get_dimensions(stdscr)
             stdscr.clear()
             stdscr.box()
-            # stdscr.addstr(0, 0, f"{y}x{x}   {self.count}    {self.selected}")
-            # count = 0
-            # for i in range(0, 8):
-            #     stdscr.addstr(1, 2+i+count, f"\u2588\u2588",
-            #                   curses.color_pair(i))
-            #     stdscr.addstr(2, 2+i+count, f"\u2588\u2588",
-            #                   curses.color_pair(i) | curses.A_BOLD)
-            #     count += 1
             subwindow = self.create_subwindow(stdscr, y-5, x)
             thread = threading.Thread(self.display_videos(subwindow))
             thread.start()
