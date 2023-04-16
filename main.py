@@ -1,5 +1,9 @@
 """
-    Youtube player using mpv
+############################################################################################################
+                                Youtube player using mpv amd ytcc
+
+
+############################################################################################################
 """
 import curses
 import threading
@@ -13,7 +17,7 @@ import os
 
 videos = None
 daterange = None
-refreshrate = 200
+refreshrate = 500
 
 
 def get_videos(data):
@@ -44,16 +48,16 @@ class Menu:
 
     def set_colors(self, stdscr):
         curses.use_default_colors()
-        for x, y in enumerate([curses.COLOR_RED,
+        # 0:black, 1:red, 2:green, 3:yellow, 4:blue, 5:magenta, 6:cyan, and 7:white
+        for x, y in enumerate([curses.COLOR_BLACK,
+                               curses.COLOR_RED,
                                curses.COLOR_GREEN,
                                curses.COLOR_YELLOW,
                                curses.COLOR_BLUE,
                                curses.COLOR_MAGENTA,
-                               curses.COLOR_CYAN]):
+                               curses.COLOR_CYAN,
+                               curses.COLOR_WHITE]):
             curses.init_pair(x, y, -1)
-
-    def set_position(self, stdscr, y, x, *args, **kwargs):
-        pass
 
     def list_options(self):
         for x in self.videos:
@@ -69,6 +73,14 @@ class Menu:
             y, x = self.get_dimensions(stdscr)
             stdscr.clear()
             stdscr.box()
+            # stdscr.addstr(0, 0, f"{y}x{x}   {self.count}    {self.selected}")
+            # count = 0
+            # for i in range(0, 8):
+            #     stdscr.addstr(1, 2+i+count, f"\u2588\u2588",
+            #                   curses.color_pair(i))
+            #     stdscr.addstr(2, 2+i+count, f"\u2588\u2588",
+            #                   curses.color_pair(i) | curses.A_BOLD)
+            #     count += 1
             subwindow = self.create_subwindow(stdscr, y-5, x)
             thread = threading.Thread(self.display_videos(subwindow))
             thread.start()
@@ -97,75 +109,115 @@ class Menu:
         except curses.error:
             pass
 
-    def create_subpad(self, stdscr, y, x):
-        try:
-            subpad = stdscr.subpad(y-4, x-2, 2, 1)
-            subpad.border(' ', ' ', 0, 0, ' ', ' ', ' ', ' ')
-            subpad.refresh()
-            return subpad
-        except curses.error:
-            pass
-
     def header(self, stdscr, x):
         stdscr.addstr(1, x//2-len(self.title)//2,
-                      self.title, curses.color_pair(1))
-        guide_text = "Use Up and Down arrow keys to navigate, Enter to select"
-        stdscr.addstr(3, 3, guide_text, curses.color_pair(4))
+                      self.title, curses.color_pair(2) | curses.A_BOLD)
+        guide_text = textwrap.wrap(
+            "Use arrow keys to navigate and enter to select", width=(x-4))[0]
+        stdscr.addstr(3, 2, guide_text, curses.color_pair(4) | curses.A_BOLD)
 
     def footer(self, stdscr, y):
         text = "Press 'q' or Ctrl+C to exit"
         try:
-            stdscr.addstr(y-2, 3, text)
+            stdscr.addstr(y-2, 2, text, curses.color_pair(4) | curses.A_BOLD)
         except curses.error:
             pass
 
     def display_videos(self, subwin):
-        y, x = subwin.getmaxyx()
-        global videos
-        pos = self.pos
-        count = 0
-        for i, video in enumerate(videos):
-            if i < y-3:
-                try:
-                    if self.selected == i:
-                        ypos = i+1
-                        subwin.addstr(ypos, 1, str(pos+i+1),
-                                      curses.color_pair(1))
-                        subwin.addstr(ypos, 5, video.title,
-                                      curses.color_pair(2) | curses.A_BOLD)
-                        # pos += 1
-                        # subwin.addstr(ypos+1, 5, f"Channel:")
-                        # subwin.addstr(
-                        #     ypos+1, 13, video.playlists[0].name, curses.color_pair(3) | curses.A_BOLD)
-                        # pos += 1
-                    else:
-                        subwin.addstr(
-                            i+1+pos, 1, f"{pos+i+1}. {video.title}", curses.color_pair(2))
-                    self.videos.append(video.url)
-                    count += 1
-                except curses.error:
-                    pass
-        self.count = count
-        subwin.refresh()
+        try:
+            y, x = subwin.getmaxyx()
+            global videos
+            pos = self.pos
+            count = 0
+            for i, video in enumerate(videos):
+                if i < y-2:
+                    ypos = i + 1 + pos
+                    try:
+                        title = textwrap.wrap(video.title, width=(x//2-8))[0]
+                        if self.selected == i:
+                            if x > 100 and y > 20:
+                                self.show_details(subwin, video, y, x)
+                                subwin.addstr(ypos, 1, f"{pos+i+1}. {title}", curses.color_pair(2) | curses.A_BOLD)
+                            else:
+                                subwin.addstr(ypos, 1, f"{pos+i+1}. {textwrap.wrap(video.title, width=(x-8))[0]}", curses.color_pair(2) | curses.A_BOLD)
+                        else:
+                            if x > 100 and y > 20:
+                                subwin.addstr(
+                                    ypos, 1, f"{pos+i+1}. {title}", curses.color_pair(0))
+                            else:
+                                subwin.addstr(
+                                    ypos, 1, f"{pos+i+1}. {textwrap.wrap(video.title, width=(x-6))[0]}", curses.color_pair(0))
+                        self.videos.append(video.url)
+                        count += 1
+                    except curses.error:
+                        pass
+            self.count = count
+            subwin.refresh()
+        except AttributeError:
+            pass
+
+    def show_details(self, subwin, video, y, x):
+        try:
+            title = textwrap.wrap(video.title, width=(x//2-4))
+            channel = video.playlists[0].name
+            published = video.publish_date
+            description = video.description
+            watched = video.watch_date
+            duration = video.duration
+            details_text = ("Channel", "Published",
+                            "Description", "Watched", "Duration")
+            details = (channel, published, description, watched, duration)
+            subdetails = subwin.subwin(y-2, (x//2 + x % 2), 5, x//2)
+            subdetails.border()
+            subdetails.refresh()
+            count = 0
+            for i, title in enumerate(title):
+                if i >= 2:
+                    break
+                subdetails.addstr(
+                    i+1, 2, title, curses.color_pair(3) | curses.A_BOLD)
+                count += 1
+            subdetails.addstr(2+count, 2, f"{details_text[0]}:")
+            subdetails.addstr(3+count, 2, f"{details_text[4]}:")
+            subdetails.addstr(
+                10, 2, f"{details_text[2]}:", curses.color_pair(3) | curses.A_BOLD)
+            subdetails.addstr(4+count, 2, f"{details_text[3]}:")
+            subdetails.addstr(5+count, 2, f"{details_text[1]}:")
+            subdetails.addstr(
+                2+count, 14, f"{details[0]}", curses.color_pair(4) | curses.A_BOLD)
+            subdetails.addstr(3+count, 12, f"{details[4]}")
+            if details[3] != None:
+                subdetails.addstr(
+                    4+count, 14, f"YES", curses.color_pair(2) | curses.A_BOLD)
+            else:
+                subdetails.addstr(
+                    4+count, 14, f"NO", curses.color_pair(1) | curses.A_BOLD)
+            year, month, day = details[1].split('-')
+            date = datetime.date.strftime(datetime.date(
+                int(year), int(month), int(day)), '%d/%m/%Y')
+            subdetails.addstr(5+count, 14, f"{date}")
+            lines = textwrap.wrap(details[2], width=(x//2-6))
+            for i, line in enumerate(lines):
+                if i < y-14:
+                    subdetails.addstr(11+i, 3, line)
+            return subdetails
+        except curses.error:
+            pass
 
     def handle_input(self, key):
         selected = self.selected
-        # DIRT: Fix this
-        if selected > self.count-1:
-            self.selected = self.count-1
         if key == ord('q'):
             return True
         elif key == curses.KEY_UP:
             if selected > 0:
                 self.selected -= 1
-                return False
-        elif key == curses.KEY_DOWN:
-            if selected < self.count:
-                self.selected += 1
-                return False
-            elif selected > self.count:
+            else:
                 self.selected = self.count-1
-                return False
+        elif key == curses.KEY_DOWN:
+            if self.count > selected+1:
+                self.selected += 1
+            else:
+                self.selected = 0
         elif key == curses.KEY_ENTER or key == 10 or key == 13:
             play_video(self.videos[self.selected])
 
@@ -177,11 +229,11 @@ def play_video(url):
     subprocess.run(['mpv',
                     '--hwdec=auto',
                     # '--no-audio-display',
-                    # '--no-osc',
+                    '--no-osc',
                     # '--no-input-default-bindings',
                     # '--no-input-cursor',
                     # '--no-keepaspect',
-                    # '--no-border',
+                    '--no-border',
                     # '--no-keep-open',
                     # '--no-keep-open-pause',
                     # '--no-cache',
@@ -196,22 +248,11 @@ def play_video(url):
                    stdout=subprocess.DEVNULL,
                    stderr=subprocess.STDOUT
                    )
-    # print(url)
 
 
 class Ytcc:
     def __init__(self):
         self.json_data = None
-        self.date = ''
-
-    def get_date(self):
-        return self.date
-
-    def get_subscriptions(self):
-        pass
-
-    def import_subscriptions(self):
-        pass
 
     def update_subscriptions(self):
         subprocess.run(['ytcc', 'update'])
