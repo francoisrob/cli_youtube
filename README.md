@@ -3,11 +3,8 @@
 **Watch Youtube vids in your Command line**
 
 ## Requirements
-
-This script requires:
-
 - `Python3`
-- [ytcc](https://github.com/woefe/ytcc)and
+- [ytcc](https://github.com/woefe/ytcc)
 
   For the moment ytcc needs to be set up seperately from the command line first before running this script.
   This includes importing/saving current Youtube Subcriptions from Google Takeout, more details in the repo.
