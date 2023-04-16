@@ -33,6 +33,7 @@ class Menu:
     def __init__(self, title, videos):
         self.title = title
         self.videos = []
+        self.entered = False
         self.selected = 0
         self.pos = 0
         self.count = 0
@@ -79,6 +80,7 @@ class Menu:
             thread.join()
             stdscr.refresh()
             try:
+                curses.flushinp()
                 c = stdscr.getch()
                 if self.handle_input(c) == True:
                     break
@@ -131,10 +133,10 @@ class Menu:
                                       curses.color_pair(1))
                         subwin.addstr(ypos, 5, video.title,
                                       curses.color_pair(2) | curses.A_BOLD)
-                        pos += 1
-                        subwin.addstr(ypos+1, 5, f"Channel:")
-                        subwin.addstr(
-                            ypos+1, 13, video.playlists[0].name, curses.color_pair(3) | curses.A_BOLD)
+                        # pos += 1
+                        # subwin.addstr(ypos+1, 5, f"Channel:")
+                        # subwin.addstr(
+                        #     ypos+1, 13, video.playlists[0].name, curses.color_pair(3) | curses.A_BOLD)
                         # pos += 1
                     else:
                         subwin.addstr(
@@ -158,14 +160,15 @@ class Menu:
                 self.selected -= 1
                 return False
         elif key == curses.KEY_DOWN:
-            if selected <= self.count-1:
+            if selected < self.count:
                 self.selected += 1
                 return False
             elif selected > self.count:
-                self.selected = self.count+1
+                self.selected = self.count-1
                 return False
         elif key == curses.KEY_ENTER or key == 10 or key == 13:
             play_video(self.videos[self.selected])
+
         else:
             return False
 
