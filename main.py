@@ -17,7 +17,8 @@ import os
 
 videos = None
 daterange = None
-refreshrate = 500
+updated = False
+refreshrate = 750
 
 
 def get_videos(data):
@@ -34,7 +35,7 @@ def set_date(**days):
 
 
 class Menu:
-    def __init__(self, title, videos):
+    def __init__(self, title):
         self.title = title
         self.videos = []
         self.entered = False
@@ -63,33 +64,34 @@ class Menu:
             print(x.title)
 
     def window(self, stdscr):
-        global refreshrate
+        global refreshrate, updated
         curses.curs_set(0)
         stdscr.timeout(refreshrate)
         self.set_colors(stdscr)
+        y, x = self.get_dimensions(stdscr)
 
         while True:
-            y, x = self.get_dimensions(stdscr)
             stdscr.clear()
+            y, x = self.get_dimensions(stdscr)
+            try:
+                self.header(stdscr, x)
+                self.footer(stdscr, y, x)
+            except curses.error:
+                pass
             stdscr.box()
             subwindow = self.create_subwindow(stdscr, y-5, x)
             thread = threading.Thread(self.display_videos(subwindow))
             thread.start()
-            try:
-                self.header(stdscr, x)
-                self.footer(stdscr, y)
-            except curses.error:
-                pass
-            thread.join()
             stdscr.refresh()
             try:
                 curses.flushinp()
                 c = stdscr.getch()
                 if self.handle_input(c) == True:
                     break
+                elif updated == True:
+                    thread.join()
             except KeyboardInterrupt:
                 break
-        curses.endwin()
 
     def create_subwindow(self, stdscr, y, x):
         try:
@@ -107,8 +109,15 @@ class Menu:
             "Use arrow keys to navigate and enter to select", width=(x-4))[0]
         stdscr.addstr(3, 2, guide_text, curses.color_pair(4) | curses.A_BOLD)
 
-    def footer(self, stdscr, y):
+    def footer(self, stdscr, y, x):
         text = "Press 'q' or Ctrl+C to exit"
+        updating_text = "Updating..."
+        updated_text =  "Updated"
+        if updated:
+            stdscr.addstr(y-2, (x-len(updating_text)-2), "              ")
+            stdscr.addstr(y-2, (x-len(updated_text)-3), updated_text, curses.color_pair(2))
+        else:
+            stdscr.addstr(y-2, (x-len(updating_text)-2), updating_text, curses.color_pair(0))
         try:
             stdscr.addstr(y-2, 2, text, curses.color_pair(4) | curses.A_BOLD)
         except curses.error:
@@ -246,7 +255,9 @@ class Ytcc:
         self.json_data = None
 
     def update_subscriptions(self):
-        subprocess.run(['ytcc', 'update'])
+        global updated
+        subprocess.run(['ytcc', 'update'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        updated = True
 
     def get_videos(self):
         global daterange
@@ -269,6 +280,8 @@ class Ytcc:
 if __name__ == '__main__':
     os.system('clear')
     ytc = Ytcc()
+    update_videos = threading.Thread(target=ytc.update_subscriptions)
+    update_videos.start()
     set_date(days=6)
     get_videos(ytc.get_videos())
-    curses.wrapper(Menu('Youtube in MPV', videos).window)
+    curses.wrapper(Menu('Youtube in MPV').window)
