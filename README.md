@@ -1,8 +1,9 @@
 # CLI YOUTUBE
 
-**Watch Youtube vids in your Command line**
+## Watch Youtube vids in your Command line
 
 ## Requirements
+
 - `Python3`
 - [ytcc](https://github.com/woefe/ytcc)
 

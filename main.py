@@ -1,6 +1,6 @@
 """
 ############################################################################################################
-                                Youtube player using mpv amd ytcc
+                                Youtube player using mpv and ytcc
 
 
 ############################################################################################################
@@ -206,6 +206,8 @@ class Menu:
 
     def handle_input(self, key):
         selected = self.selected
+        if selected > self.count-1:
+            self.selected = self.count-1
         if key == ord('q'):
             return True
         elif key == curses.KEY_UP:
