@@ -12,7 +12,8 @@
 
 ## Running
 
-first time and every time you need to check for new videos(for now), run:
+~first time and every time you need to check for new videos(for now), run:
 `ytcc update`
 then
-`python3 ./main.py` from the project dir to run this script.
+`python3 ./main.py` from the project dir to run this script.~
+Just run it after setting up ytcc for the first time. cli_youtube automatically updates your videos
