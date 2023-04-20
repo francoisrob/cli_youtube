@@ -1,6 +1,6 @@
 """
 ############################################################################################################
-                                Youtube player using mpv amd ytcc
+                                Youtube player using mpv and ytcc
 
 
 ############################################################################################################
@@ -17,7 +17,8 @@ import os
 
 videos = None
 daterange = None
-refreshrate = 500
+updated = False
+refreshrate = 800
 
 
 def get_videos(data):
@@ -34,7 +35,7 @@ def set_date(**days):
 
 
 class Menu:
-    def __init__(self, title, videos):
+    def __init__(self, title):
         self.title = title
         self.videos = []
         self.entered = False
@@ -48,7 +49,6 @@ class Menu:
 
     def set_colors(self, stdscr):
         curses.use_default_colors()
-        # 0:black, 1:red, 2:green, 3:yellow, 4:blue, 5:magenta, 6:cyan, and 7:white
         for x, y in enumerate([curses.COLOR_BLACK,
                                curses.COLOR_RED,
                                curses.COLOR_GREEN,
@@ -64,32 +64,24 @@ class Menu:
             print(x.title)
 
     def window(self, stdscr):
-        global refreshrate
+        global refreshrate, updated
         curses.curs_set(0)
         stdscr.timeout(refreshrate)
         self.set_colors(stdscr)
+        y, x = self.get_dimensions(stdscr)
 
         while True:
-            y, x = self.get_dimensions(stdscr)
             stdscr.clear()
+            y, x = self.get_dimensions(stdscr)
+            try:
+                self.header(stdscr, x)
+                self.footer(stdscr, y, x)
+            except curses.error:
+                pass
             stdscr.box()
-            # stdscr.addstr(0, 0, f"{y}x{x}   {self.count}    {self.selected}")
-            # count = 0
-            # for i in range(0, 8):
-            #     stdscr.addstr(1, 2+i+count, f"\u2588\u2588",
-            #                   curses.color_pair(i))
-            #     stdscr.addstr(2, 2+i+count, f"\u2588\u2588",
-            #                   curses.color_pair(i) | curses.A_BOLD)
-            #     count += 1
             subwindow = self.create_subwindow(stdscr, y-5, x)
             thread = threading.Thread(self.display_videos(subwindow))
             thread.start()
-            try:
-                self.header(stdscr, x)
-                self.footer(stdscr, y)
-            except curses.error:
-                pass
-            thread.join()
             stdscr.refresh()
             try:
                 curses.flushinp()
@@ -98,7 +90,6 @@ class Menu:
                     break
             except KeyboardInterrupt:
                 break
-        curses.endwin()
 
     def create_subwindow(self, stdscr, y, x):
         try:
@@ -116,45 +107,70 @@ class Menu:
             "Use arrow keys to navigate and enter to select", width=(x-4))[0]
         stdscr.addstr(3, 2, guide_text, curses.color_pair(4) | curses.A_BOLD)
 
-    def footer(self, stdscr, y):
+    def footer(self, stdscr, y, x):
         text = "Press 'q' or Ctrl+C to exit"
+        updating_text = "Updating..."
+        updated_text = "Updated"
+        if updated:
+            stdscr.addstr(y-2, (x-len(updating_text)-2), "              ")
+            stdscr.addstr(y-2, (x-len(updated_text)-3),
+                          updated_text, curses.color_pair(2))
+        else:
+            stdscr.addstr(y-2, (x-len(updating_text)-2),
+                          updating_text, curses.color_pair(0))
         try:
             stdscr.addstr(y-2, 2, text, curses.color_pair(4) | curses.A_BOLD)
         except curses.error:
             pass
 
     def display_videos(self, subwin):
-        try:
-            y, x = subwin.getmaxyx()
-            global videos
-            pos = self.pos
-            count = 0
-            for i, video in enumerate(videos):
-                if i < y-2:
-                    ypos = i + 1 + pos
-                    try:
-                        title = textwrap.wrap(video.title, width=(x//2-8))[0]
-                        if self.selected == i:
-                            if x > 100 and y > 20:
-                                self.show_details(subwin, video, y, x)
-                                subwin.addstr(ypos, 1, f"{pos+i+1}. {title}", curses.color_pair(2) | curses.A_BOLD)
+        global videos
+        if len(videos) == 0:
+            try:
+                y, x = subwin.getmaxyx()
+                subwin.addstr(
+                    y//4, x//2-25, "Fetching latest videos. This might take a while...", curses.A_BOLD)
+            except AttributeError:
+                pass
+        else:
+            try:
+                y, x = subwin.getmaxyx()
+                pos = self.pos
+                count = 0
+                try:
+                    subwin.addstr(
+                        y//4, x//2-25, "                                                  ")
+                except curses.error:
+                    pass
+                for i, video in enumerate(videos):
+                    if i < y-2:
+                        ypos = i + 1 + pos
+                        try:
+                            title = textwrap.wrap(
+                                video.title, width=(x//2-8))[0]
+                            if self.selected == i:
+                                if x > 100 and y > 20:
+                                    self.show_details(subwin, video, y, x)
+                                    subwin.addstr(
+                                        ypos, 1, f"{pos+i+1}. {title}", curses.color_pair(2) | curses.A_BOLD)
+                                else:
+                                    subwin.addstr(
+                                        ypos, 1, f"{pos+i+1}. {textwrap.wrap(video.title, width=(x-8))[0]}", curses.color_pair(2) | curses.A_BOLD)
                             else:
-                                subwin.addstr(ypos, 1, f"{pos+i+1}. {textwrap.wrap(video.title, width=(x-8))[0]}", curses.color_pair(2) | curses.A_BOLD)
-                        else:
-                            if x > 100 and y > 20:
-                                subwin.addstr(
-                                    ypos, 1, f"{pos+i+1}. {title}", curses.color_pair(0))
-                            else:
-                                subwin.addstr(
-                                    ypos, 1, f"{pos+i+1}. {textwrap.wrap(video.title, width=(x-6))[0]}", curses.color_pair(0))
-                        self.videos.append(video.url)
-                        count += 1
-                    except curses.error:
-                        pass
-            self.count = count
-            subwin.refresh()
-        except AttributeError:
-            pass
+                                if x > 100 and y > 20:
+                                    subwin.addstr(
+                                        ypos, 1, f"{pos+i+1}. {title}", curses.color_pair(0))
+                                else:
+                                    subwin.addstr(
+                                        ypos, 1, f"{pos+i+1}. {textwrap.wrap(video.title, width=(x-6))[0]}", curses.color_pair(0))
+                            self.videos.append(video.url)
+                            count += 1
+                        except curses.error:
+                            pass
+                self.count = count
+                subwin.refresh()
+            except AttributeError:
+                pass
 
     def show_details(self, subwin, video, y, x):
         try:
@@ -206,6 +222,10 @@ class Menu:
 
     def handle_input(self, key):
         selected = self.selected
+        if selected > self.count-1:
+            self.selected = self.count-1
+        elif selected < 0:
+            self.selected = 0
         if key == ord('q'):
             return True
         elif key == curses.KEY_UP:
@@ -255,7 +275,12 @@ class Ytcc:
         self.json_data = None
 
     def update_subscriptions(self):
-        subprocess.run(['ytcc', 'update'])
+        global updated
+        subprocess.run(['ytcc', 'update'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        data = self.get_videos()
+        get_videos(data)
+        updated = True
 
     def get_videos(self):
         global daterange
@@ -278,6 +303,8 @@ class Ytcc:
 if __name__ == '__main__':
     os.system('clear')
     ytc = Ytcc()
+    update_videos = threading.Thread(target=ytc.update_subscriptions)
+    update_videos.start()
     set_date(days=6)
     get_videos(ytc.get_videos())
-    curses.wrapper(Menu('Youtube in MPV', videos).window)
+    curses.wrapper(Menu('Youtube in MPV').window)
